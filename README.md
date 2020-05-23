@@ -24,6 +24,11 @@ scripts are in Folder [Basset](https://github.com/ChendiWang/multitask_species/t
 
 # Architecture variants
 1. Single task
+![](images/single.png)
 2. Multitask Hard split 
-3. Multitask Hard branch
-4. Multitask Soft branch
+![](images/Hard_parameter_sharing.png)
+3. Multitask Soft branch
+![](images/Soft_parameter_sharing.png)
+4. Multitask Hard branch via task routing
+![](images/architecture.png)
+
