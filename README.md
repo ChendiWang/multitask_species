@@ -11,16 +11,16 @@ If want to generate figures: optionally run scripts in Folder [scripts_for_figur
 3. Run ISM experiments using scripts in Folder [ism](https://github.com/ChendiWang/multitask_species/tree/master/scripts/ism)
 
 # Multitask variants
-`hard_split.py`
-`hard_branch.py`
-`soft_branch.py`
-`transfer_learning.py`: if you want to compare performance to transfer learning 
+1. `hard_split.py`
+2. `soft_branch.py`
+3. `hard_branch.py`
+4. `transfer_learning.py`: if you want to compare performance to transfer learning 
 
 # Partial pytorch version
 Scripts are in Folder [partial_scripts_for_pytorch](https://github.com/ChendiWang/multitask_species/tree/master/scripts/partial_scripts_for_pytorch)
 
 # Test run on Basset model
-scripts are in Folder [Basset](https://github.com/ChendiWang/multitask_species/tree/master/scripts/Basset)
+Scripts are in Folder [Basset](https://github.com/ChendiWang/multitask_species/tree/master/scripts/Basset)
 
 # Architecture variants
 1. Single task
