@@ -38,7 +38,6 @@ combining_weight_txt = '001_00052'
 regularization_weight = 0
 regularization_txt = ''
 weight_flag = 'minmax'
-overlapped_celltype_txt = ''
      
 #-------------------------------------------#
 # Step 1. Curate Data                
@@ -76,37 +75,6 @@ with open('../data/' + species_2 + '_Data/cell_type_names.txt','r') as class_nam
     class_names_2[-1] = class_names_2[-1].strip() # remove the last newline
     class_names_2 = list(filter(None, class_names_2))  # This removes empty entries
 num_classes_2 = len(class_names_2)
-
-# Find the overlapped subset of mouse/human cell types for training
-if overlapped_celltype_txt: 
-    with open('../data/Human_Data/mouse_human_cell_type_names.txt','r') as mapping_file:
-        mapping = []
-        for line in mapping_file:
-            line = line.strip()
-            mouse_cell, human_cell = line.split()        
-            mapping.append([mouse_cell, human_cell])
-        mapping = list(filter(None, mapping))  # This removes empty entries
-    mapping = np.stack(mapping)
-    # For Mouse
-    selected_cells = np.unique(mapping[:,0])  
-    index = np.in1d(class_names_1, selected_cells).nonzero()    
-    selected_cells = [class_names_1[i] for i in index[0]]
-    class_names_1 = selected_cells
-    input_labels_1 = np.squeeze(input_labels_1[:, index], axis=1)
-    num_classes_1 = len(class_names_1)
-    del selected_cells, index
-    print(input_features_1.shape)
-    print(input_labels_1.shape)
-    # For Human
-    selected_cells = np.unique(mapping[:,1]) 
-    index = np.in1d(class_names_2, selected_cells).nonzero()    
-    selected_cells = [class_names_2[i] for i in index[0]]
-    class_names_2 = selected_cells
-    input_labels_2 = np.squeeze(input_labels_2[:, index], axis=1)
-    num_classes_2 = len(class_names_2)
-    del selected_cells, index
-    print(input_features_2.shape)
-    print(input_labels_2.shape)
 
 # TODO: Find the orthologous gene locations, and separate from train and valid and test
 # Each batch has random mixture of mouse and human samples
@@ -191,7 +159,6 @@ percent_share = [0.9, 0.8, 0.7, 0.65, 0.6]
 # Step 2. Select the Architecture and Train
 #-------------------------------------------#
 def create_model(input_size, num_classes_1, num_classes_2, batch_size, combining_weight, weight_flag, ratio=1.0, percent_share=None): #, input_tag
-    ## Build models based on Basset
     from tensorflow.keras.layers import Input, Conv1D, Dense, MaxPooling1D, Flatten, Dropout, Activation, BatchNormalization
     from tensorflow.keras.layers import Masking, Multiply, RepeatVector, Reshape, Permute, Lambda
 
@@ -199,8 +166,7 @@ def create_model(input_size, num_classes_1, num_classes_2, batch_size, combining
     inputs = Input(shape=(input_size, 4), name='inputs')
     nn = Conv1D(filters=conv1_dim, kernel_size=19, padding='same', name='conv_1')(inputs)
 
-    custom_mask_in = Input(shape=([1]), name='custom_mask_in') # tag information for task
-    # Insert a masking layer: task1 has tag_value=1, task2 has tag_value=2
+    custom_mask_in = Input(shape=([1]), name='custom_mask_in') 
     # Split into task1 + task2 + share (always = 1, Masking layer does not work on conv, so use Lambda layer)        
     conv1_mask_base = Reshape((input_size,), name='conv1_mask_base')(RepeatVector(input_size)(custom_mask_in))        
     conv1_mask_share = RepeatVector(int(conv1_dim * percent_share[0]), name='conv1_share')(conv1_mask_base) 
@@ -216,7 +182,6 @@ def create_model(input_size, num_classes_1, num_classes_2, batch_size, combining
     conv1_mask_task2 = Permute((2, 1), name='conv1_mask_task2_reordered')(conv1_mask_task2)
 
     conv1_mask = tf.keras.layers.concatenate([conv1_mask_task1, conv1_mask_task2, conv1_mask_share], name='conv1_mask_concatenate')
-    # Normalize the values to 1: binarize the values
     conv1_mask = Lambda(lambda x: K.cast(K.greater(x, 0), dtype='float32'), name='conv1_mask_normalized')(conv1_mask)
     nn = Multiply(name='conv1_branched_1')([nn, conv1_mask])
 
@@ -268,7 +233,7 @@ def create_model(input_size, num_classes_1, num_classes_2, batch_size, combining
     
     nn = Flatten(name='flatten')(nn)
     
-    # Split into task1 + task2 + share (always = 1)        
+    # Split into task1 + task2 + share         
     fc1_mask_share = Reshape((int(fc1_dim * percent_share[3]),), name='fc1_share')(RepeatVector(int(fc1_dim * 0.65))(custom_mask_in)) 
     fc1_mask_task1 = Reshape((int(fc1_dim * round(1.0 - percent_share[3], 10)/2.0),), name='fc1_task1')(RepeatVector(int(fc1_dim * 0.175))(custom_mask_in))
     fc1_mask_task1 = Masking(mask_value=2, name='fc1_mask_task1')(fc1_mask_task1) 
@@ -283,7 +248,7 @@ def create_model(input_size, num_classes_1, num_classes_2, batch_size, combining
     nn = Activation('relu', name='relu_4')(nn)
     nn = Dropout(0.3, name='dropout_1')(nn)
     
-    # Split into task1 + task2 + share (always = 1)        
+    # Split into task1 + task2 + share         
     fc2_mask_share = Reshape((int(fc2_dim * percent_share[4]),), name='fc2_share')(RepeatVector(int(fc2_dim * 0.6))(custom_mask_in)) 
     fc2_mask_task1 = Reshape((int(fc2_dim * round(1.0 - percent_share[4], 10)/2.0),), name='fc2_task1')(RepeatVector(int(fc2_dim * 0.2))(custom_mask_in))
     fc2_mask_task1 = Masking(mask_value=2, name='fc2_mask_task1')(fc2_mask_task1) 
@@ -298,7 +263,7 @@ def create_model(input_size, num_classes_1, num_classes_2, batch_size, combining
     nn = Activation('relu', name='relu_5')(nn)
     nn = Dropout(0.3, name='dropout_2')(nn)      
     
-    ## two head version:
+    ## tower head by task:
     labels_mask_1 = Input(shape=([num_classes_1]), dtype='float32', name='labels_mask_1')
     mask_1 = Masking(mask_value=0.0, name='mask_1')(labels_mask_1) 
     labels_mask_2 = Input(shape=([num_classes_2]), dtype='float32', name='labels_mask_2')
@@ -324,7 +289,7 @@ def create_model(input_size, num_classes_1, num_classes_2, batch_size, combining
         'dense_out_2': ['mse', losses.pearson_loss, losses.r2_score]
     }
 
-    opt = tf.keras.optimizers.Adam(lr=learning_rate, beta_1=0.9, beta_2=0.999, epsilon=1e-8, decay=0, amsgrad=False) # decay=1e-6,
+    opt = tf.keras.optimizers.Adam(lr=learning_rate, beta_1=0.9, beta_2=0.999, epsilon=1e-8, decay=0, amsgrad=False)
    
     model.compile(optimizer=opt,
                   loss=loss_combined,
@@ -334,7 +299,7 @@ def create_model(input_size, num_classes_1, num_classes_2, batch_size, combining
 
 run_num = 'Basset_adam_lr0001_dropout_03_conv_relu_max_BN_convfc_batch' + str(batch_size) + \
           '_loss_combine' + combining_weight_txt + '_bysample' + '_' + 'epoch' + str(num_epochs) + \
-          '_best_separatelayer_hard_branched' + overlapped_celltype_txt
+          '_best_separatelayer_hard_branched' 
 model_name = 'model' + '_multitask_MaH_ratiobased_' + run_num + '/'
 
 # Create output directory
@@ -531,103 +496,5 @@ np.save(output_directory + 'test_data_class_2.npy', test_features[test_tags==2, 
 np.save(output_directory + 'test_labels_class_2.npy', test_labels[test_tags==2, :][:, -num_classes_2:])
 np.save(output_directory + 'test_OCR_names_class_2.npy', test_names[test_tags==2])
 
-# Evaluate prediction magnitude
-# Class 1
-plt.clf()
-plt.hist(np.max(predicted_labels_1[test_tags==1, :], axis=-1) - np.min(predicted_labels_1[test_tags==1, :], axis=-1), bins=50)
-try:
-    plt.title("Average minmax = {%f}" % np.mean(np.max(predicted_labels_1[test_tags==1, :], axis=-1) - np.min(predicted_labels_1[test_tags==1, :], axis=-1)))
-except Exception as e:
-    print("could not set the title for graph")
-    print(e)
-plt.ylabel("Frequency")
-plt.xlabel("Max - Min")
-plt.savefig(output_directory + 'selected_model_predicted_labels_minmax_hist_testset_class_1.svg')
-plt.close()
-
-plt.clf()
-plt.hist(np.max(test_labels[test_tags==1, :][:, :num_classes_1], axis=-1) - np.min(test_labels[test_tags==1, :][:, :num_classes_1], axis=-1), bins=50)
-try:
-    plt.title("Average minmax = {%f}" % np.mean(np.max(test_labels[test_tags==1, :][:, :num_classes_1], axis=-1) - np.min(test_labels[test_tags==1, :][:, :num_classes_1], axis=-1)))
-except Exception as e:
-    print("could not set the title for graph")
-    print(e)
-plt.ylabel("Frequency")
-plt.xlabel("Max - Min")
-plt.savefig(output_directory + 'selected_model_ground_truth_labels_minmax_hist_testset_class_1.svg')
-plt.close()
-
-plt.clf()
-plt.hist(np.max(predicted_labels_1[test_tags==1, :], axis=-1), bins=50)
-try:
-    plt.title("Average max = {%f}" % np.mean(np.max(predicted_labels_1[test_tags==1, :], axis=-1)))
-except Exception as e:
-    print("could not set the title for graph")
-    print(e)
-plt.ylabel("Frequency")
-plt.xlabel("Max")
-plt.savefig(output_directory + 'selected_model_predicted_labels_max_hist_testset_class_1.svg')
-plt.close()
-
-plt.clf()
-plt.hist(np.max(test_labels[test_tags==1, :][:, -num_classes_1:], axis=-1), bins=50)
-try:
-    plt.title("Average max = {%f}" % np.mean(np.max(test_labels[test_tags==1, :][:, -num_classes_1:], axis=-1)))
-except Exception as e:
-    print("could not set the title for graph")
-    print(e)
-plt.ylabel("Frequency")
-plt.xlabel("Max")
-plt.savefig(output_directory + 'selected_model_ground_truth_labels_max_hist_testset_class_1.svg')
-plt.close()
-
-# Class 2
-plt.clf()
-plt.hist(np.max(predicted_labels_2[test_tags==2, :], axis=-1) - np.min(predicted_labels_2[test_tags==2, :], axis=-1), bins=50)
-try:
-    plt.title("Average minmax = {%f}" % np.mean(np.max(predicted_labels_2[test_tags==2, :], axis=-1) - np.min(predicted_labels_2[test_tags==2, :], axis=-1)))
-except Exception as e:
-    print("could not set the title for graph")
-    print(e)
-plt.ylabel("Frequency")
-plt.xlabel("Max - Min")
-plt.savefig(output_directory + 'selected_model_predicted_labels_minmax_hist_testset_class_2.svg')
-plt.close()
-
-plt.clf()
-plt.hist(np.max(test_labels[test_tags==2, :][:, -num_classes_2:], axis=-1) - np.min(test_labels[test_tags==2, :][:, -num_classes_2], axis=-1), bins=50)
-try:
-    plt.title("Average minmax = {%f}" % np.mean(np.max(test_labels[test_tags==2, :][:, -num_classes_2:], axis=-1) - np.min(test_labels[test_tags==2, :][:, -num_classes_2:], axis=-1)))
-except Exception as e:
-    print("could not set the title for graph")
-    print(e)
-plt.ylabel("Frequency")
-plt.xlabel("Max - Min")
-plt.savefig(output_directory + 'selected_model_ground_truth_labels_minmax_hist_testset_class_2.svg')
-plt.close()
-
-plt.clf()
-plt.hist(np.max(predicted_labels_2[test_tags==2, :], axis=-1), bins=50)
-try:
-    plt.title("Average max = {%f}" % np.mean(np.max(predicted_labels_2[test_tags==2, :], axis=-1)))
-except Exception as e:
-    print("could not set the title for graph")
-    print(e)
-plt.ylabel("Frequency")
-plt.xlabel("Max")
-plt.savefig(output_directory + 'selected_model_predicted_labels_max_hist_testset_class_2.svg')
-plt.close()
-
-plt.clf()
-plt.hist(np.max(test_labels[test_tags==2, :][:, -num_classes_2:], axis=-1), bins=50)
-try:
-    plt.title("Average max = {%f}" % np.mean(np.max(test_labels[test_tags==2, :][:, -num_classes_2:], axis=-1)))
-except Exception as e:
-    print("could not set the title for graph")
-    print(e)
-plt.ylabel("Frequency")
-plt.xlabel("Max")
-plt.savefig(output_directory + 'selected_model_ground_truth_labels_max_hist_testset_class_2.svg')
-plt.close()
-
+# Clear out session
 tf.keras.backend.clear_session()

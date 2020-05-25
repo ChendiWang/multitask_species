@@ -37,7 +37,6 @@ combining_weight_txt = '001_00052'
 regularization_weight = 0
 regularization_txt = ''
 weight_flag = 'minmax'
-overlapped_celltype_txt = '_overlapped_celltype'
      
 #-------------------------------------------#
 # Step 1. Curate Data                
@@ -77,37 +76,6 @@ with open('../data/' + species_2 + '_Data/cell_type_names.txt','r') as class_nam
     class_names_2 = list(filter(None, class_names_2))  # This removes empty entries
 num_classes_2 = len(class_names_2)
 
-# Find the overlapped subset of mouse/human cell types for training
-if overlapped_celltype_txt: 
-    with open('../data/Human_Data/mouse_human_cell_type_names.txt','r') as mapping_file:
-        mapping = []
-        for line in mapping_file:
-            line = line.strip()
-            mouse_cell, human_cell = line.split()        
-            mapping.append([mouse_cell, human_cell])
-        mapping = list(filter(None, mapping))  # This removes empty entries
-    mapping = np.stack(mapping)
-    # For Mouse
-    selected_cells = np.unique(mapping[:,0])  
-    index = np.in1d(class_names_1, selected_cells).nonzero()    
-    selected_cells = [class_names_1[i] for i in index[0]]
-    class_names_1 = selected_cells
-    input_labels_1 = np.squeeze(input_labels_1[:, index], axis=1)
-    num_classes_1 = len(class_names_1)
-    del selected_cells, index
-    print(input_features_1.shape)
-    print(input_labels_1.shape)
-    # For Human
-    selected_cells = np.unique(mapping[:,1]) 
-    index = np.in1d(class_names_2, selected_cells).nonzero()    
-    selected_cells = [class_names_2[i] for i in index[0]]
-    class_names_2 = selected_cells
-    input_labels_2 = np.squeeze(input_labels_2[:, index], axis=1)
-    num_classes_2 = len(class_names_2)
-    del selected_cells, index
-    print(input_features_2.shape)
-    print(input_labels_2.shape)
-
 # TODO: Find the orthologous gene locations, and separate from train and valid and test
 # Each batch has random mixture of mouse and human samples
 # Pad the labels of the opposite class with 0
@@ -143,7 +111,7 @@ train_index_1 = np.arange(len(train_tags_1))
 train_index_2 = np.arange(len(train_tags_2)) + len(train_tags_1)
 
 # This magic number to bring the num to the same as the other task
-insert_index = np.where(np.mod(train_index_1, ratio)>=0.958058/ratio)[0] #0.958058
+insert_index = np.where(np.mod(train_index_1, ratio)>=0.958058/ratio)[0] 
 # Use -1 as place holder to balance two datasets
 train_index_1_insert = np.insert(train_index_1, insert_index, -1)
 train_index_2_insert = train_index_2
@@ -193,7 +161,6 @@ percent_share = [0.9, 0.8, 0.7, 0.65, 0.6]
 # Step 2. Select the Architecture and Train
 #-------------------------------------------#
 def create_model(input_size, num_classes_1, num_classes_2, batch_size, combining_weight, weight_flag, ratio=1.0, percent_share=None): #, input_tag
-    ## Build models based on Basset
     from tensorflow.keras.layers import Input, Conv1D, Dense, MaxPooling1D, Flatten, Dropout, Activation, BatchNormalization
     from tensorflow.keras.layers import Masking, Add, Multiply, RepeatVector, Reshape, Permute, Lambda
 
@@ -321,12 +288,11 @@ def create_model(input_size, num_classes_1, num_classes_2, batch_size, combining
 
 run_num = 'Basset_adam_lr0001_dropout_03_conv_relu_max_BN_convfc_batch' + str(batch_size) + \
           '_loss_combine' + combining_weight_txt + '_bysample' + '_' + 'epoch' + str(num_epochs) + \
-          '_best_separatelayer_soft_branched_cross_stitch' + overlapped_celltype_txt 
+          '_best_separatelayer_soft_branched_cross_stitch'
 model_name = 'model' + '_multitask_MaH_ratiobased_' + run_num 
 
 # Create output directory
-folder = '/media/chendi/DATA2/projects/XDNN/mhTransferLearning/immuneMH/'
-#folder = '../'
+folder = '../'
 output_directory = folder + 'results/models/keras_version/multitask/' + model_name + '/'
 directory = os.path.dirname(output_directory)
 if not os.path.exists(directory):
@@ -492,15 +458,11 @@ correlations_2 = plot_utils.plot_cors(test_labels[test_tags==2, :][:, -num_class
 
 
 quantile_indx_1 = plot_utils.plot_cors_piechart(correlations_1, test_labels[test_tags==1, :][:, :num_classes_1], output_directory, 'basset_cor_pie_class_1.svg')
-
 plot_utils.plot_random_predictions(test_labels[test_tags==1, :][:, :num_classes_1], predicted_labels_1[test_tags==1, :], correlations_1, quantile_indx_1, test_names[test_tags==1], output_directory, len(class_names_1), class_names_1, 'class_1_')
-
 plot_utils.plot_random_predictions(test_labels[test_tags==1, :][:, :num_classes_1], predicted_labels_1[test_tags==1, :], correlations_1, quantile_indx_1, test_names[test_tags==1], output_directory, len(class_names_1), class_names_1, 'class_1_', scale=False)
 
 quantile_indx_2 = plot_utils.plot_cors_piechart(correlations_2, test_labels[test_tags==2, :][:, -num_classes_2:], output_directory, 'basset_cor_pie_class_2.svg')
-
 plot_utils.plot_random_predictions(test_labels[test_tags==2, :][:, -num_classes_2:], predicted_labels_2[test_tags==2, :], correlations_2, quantile_indx_2, test_names[test_tags==2], output_directory, len(class_names_2), class_names_2, 'class_2_')
-
 plot_utils.plot_random_predictions(test_labels[test_tags==2, :][:, -num_classes_2:], predicted_labels_2[test_tags==2, :], correlations_2, quantile_indx_2, test_names[test_tags==2], output_directory, len(class_names_2), class_names_2, 'class_2_', scale=False)
 
 #save predictions
@@ -519,103 +481,5 @@ np.save(output_directory + 'test_data_class_2.npy', test_features[test_tags==2, 
 np.save(output_directory + 'test_labels_class_2.npy', test_labels[test_tags==2, :][:, -num_classes_2:])
 np.save(output_directory + 'test_OCR_names_class_2.npy', test_names[test_tags==2])
 
-# Evaluate prediction magnitude
-# Class 1
-plt.clf()
-plt.hist(np.max(predicted_labels_1[test_tags==1, :], axis=-1) - np.min(predicted_labels_1[test_tags==1, :], axis=-1), bins=50)
-try:
-    plt.title("Average minmax = {%f}" % np.mean(np.max(predicted_labels_1[test_tags==1, :], axis=-1) - np.min(predicted_labels_1[test_tags==1, :], axis=-1)))
-except Exception as e:
-    print("could not set the title for graph")
-    print(e)
-plt.ylabel("Frequency")
-plt.xlabel("Max - Min")
-plt.savefig(output_directory + 'selected_model_predicted_labels_minmax_hist_testset_class_1.svg')
-plt.close()
-
-plt.clf()
-plt.hist(np.max(test_labels[test_tags==1, :][:, :num_classes_1], axis=-1) - np.min(test_labels[test_tags==1, :][:, :num_classes_1], axis=-1), bins=50)
-try:
-    plt.title("Average minmax = {%f}" % np.mean(np.max(test_labels[test_tags==1, :][:, :num_classes_1], axis=-1) - np.min(test_labels[test_tags==1, :][:, :num_classes_1], axis=-1)))
-except Exception as e:
-    print("could not set the title for graph")
-    print(e)
-plt.ylabel("Frequency")
-plt.xlabel("Max - Min")
-plt.savefig(output_directory + 'selected_model_ground_truth_labels_minmax_hist_testset_class_1.svg')
-plt.close()
-
-plt.clf()
-plt.hist(np.max(predicted_labels_1[test_tags==1, :], axis=-1), bins=50)
-try:
-    plt.title("Average max = {%f}" % np.mean(np.max(predicted_labels_1[test_tags==1, :], axis=-1)))
-except Exception as e:
-    print("could not set the title for graph")
-    print(e)
-plt.ylabel("Frequency")
-plt.xlabel("Max")
-plt.savefig(output_directory + 'selected_model_predicted_labels_max_hist_testset_class_1.svg')
-plt.close()
-
-plt.clf()
-plt.hist(np.max(test_labels[test_tags==1, :][:, -num_classes_1:], axis=-1), bins=50)
-try:
-    plt.title("Average max = {%f}" % np.mean(np.max(test_labels[test_tags==1, :][:, -num_classes_1:], axis=-1)))
-except Exception as e:
-    print("could not set the title for graph")
-    print(e)
-plt.ylabel("Frequency")
-plt.xlabel("Max")
-plt.savefig(output_directory + 'selected_model_ground_truth_labels_max_hist_testset_class_1.svg')
-plt.close()
-
-# Class 2
-plt.clf()
-plt.hist(np.max(predicted_labels_2[test_tags==2, :], axis=-1) - np.min(predicted_labels_2[test_tags==2, :], axis=-1), bins=50)
-try:
-    plt.title("Average minmax = {%f}" % np.mean(np.max(predicted_labels_2[test_tags==2, :], axis=-1) - np.min(predicted_labels_2[test_tags==2, :], axis=-1)))
-except Exception as e:
-    print("could not set the title for graph")
-    print(e)
-plt.ylabel("Frequency")
-plt.xlabel("Max - Min")
-plt.savefig(output_directory + 'selected_model_predicted_labels_minmax_hist_testset_class_2.svg')
-plt.close()
-
-plt.clf()
-plt.hist(np.max(test_labels[test_tags==2, :][:, -num_classes_2:], axis=-1) - np.min(test_labels[test_tags==2, :][:, -num_classes_2], axis=-1), bins=50)
-try:
-    plt.title("Average minmax = {%f}" % np.mean(np.max(test_labels[test_tags==2, :][:, -num_classes_2:], axis=-1) - np.min(test_labels[test_tags==2, :][:, -num_classes_2:], axis=-1)))
-except Exception as e:
-    print("could not set the title for graph")
-    print(e)
-plt.ylabel("Frequency")
-plt.xlabel("Max - Min")
-plt.savefig(output_directory + 'selected_model_ground_truth_labels_minmax_hist_testset_class_2.svg')
-plt.close()
-
-plt.clf()
-plt.hist(np.max(predicted_labels_2[test_tags==2, :], axis=-1), bins=50)
-try:
-    plt.title("Average max = {%f}" % np.mean(np.max(predicted_labels_2[test_tags==2, :], axis=-1)))
-except Exception as e:
-    print("could not set the title for graph")
-    print(e)
-plt.ylabel("Frequency")
-plt.xlabel("Max")
-plt.savefig(output_directory + 'selected_model_predicted_labels_max_hist_testset_class_2.svg')
-plt.close()
-
-plt.clf()
-plt.hist(np.max(test_labels[test_tags==2, :][:, -num_classes_2:], axis=-1), bins=50)
-try:
-    plt.title("Average max = {%f}" % np.mean(np.max(test_labels[test_tags==2, :][:, -num_classes_2:], axis=-1)))
-except Exception as e:
-    print("could not set the title for graph")
-    print(e)
-plt.ylabel("Frequency")
-plt.xlabel("Max")
-plt.savefig(output_directory + 'selected_model_ground_truth_labels_max_hist_testset_class_2.svg')
-plt.close()
-
+# Clear out session
 tf.keras.backend.clear_session()
