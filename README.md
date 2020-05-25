@@ -16,9 +16,6 @@ If want to generate figures: optionally run scripts in Folder [scripts_for_figur
 3. `hard_branch.py`
 4. `transfer_learning.py`: if you want to compare performance to transfer learning 
 
-# Partial pytorch version
-Scripts are in Folder [partial_scripts_for_pytorch](https://github.com/ChendiWang/multitask_species/tree/master/scripts/partial_scripts_for_pytorch)
-
 # Test run on Basset model
 Scripts are in Folder [Basset](https://github.com/ChendiWang/multitask_species/tree/master/scripts/Basset)
 
