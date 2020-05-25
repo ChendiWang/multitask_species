@@ -16,15 +16,6 @@ from sklearn.metrics import mean_squared_error
 
 import utils
 
-def plot_training_loss(training_loss, output_directory):
-    #plot line plot of loss function per epoch
-    plt.figure(figsize=(16, 9))
-    plt.plot(np.arange(len(training_loss)), training_loss)
-    plt.xlabel('Epoch', fontsize=18)
-    plt.ylabel('Loss', fontsize=18)
-    plt.savefig(output_directory + "training_loss.svg")
-    plt.close()
-    
     
 def plot_training_valid_loss(training_loss, valid_loss, loss1_txt, loss2_txt, output_directory):
     #plot line plot of loss function per epoch

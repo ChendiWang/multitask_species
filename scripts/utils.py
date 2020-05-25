@@ -357,7 +357,7 @@ def mut_seq_perbase_opposite_hyp(mut_dict, onehot_data, hyp_score, loc_txt, flag
                 tmp[i, :] = 0
                 tmp[i, np.argmin(tmp_hyp[i, :])] = 1
 
-            else: # what happens when both=4?
+            else: # TODO: path for edge case, that when both direction dim=4
                 if flag_order == 'ATGC':
                     tmp = tmp[[0, 3, 2, 1], :]
                 tmp[:, i] = 0
@@ -365,6 +365,91 @@ def mut_seq_perbase_opposite_hyp(mut_dict, onehot_data, hyp_score, loc_txt, flag
             output_onehot_data[:, :, i] = tmp
                     
     return output_onehot_data
+
+
+# Parse meme file into array
+def read_meme(file_path=None):
+    with open(file_path) as fp:
+        line = fp.readline()
+        motifs=[]
+        motif_names=[]
+        while line:
+            #determine length of next motif
+            if line.split(" ")[0]=='MOTIF':
+                #add motif number to separate array
+                motif_names.append(line.split(" ")[1])           
+                
+                #get length of motif
+                line2=fp.readline().split(" ")
+                motif_length = int(float(line2[5]))
+                
+                #read in motif 
+                current_motif=np.zeros((19, 4)) # Edited pad shorter ones with 0
+                for i in range(motif_length):
+                    current_motif[i,:] = fp.readline().split("\t")
+                
+                motifs.append(current_motif)
+
+            line = fp.readline()
+            
+        motifs = np.stack(motifs)  
+        motif_names = np.stack(motif_names)
+    return motifs, motif_names
+
+
+def compute_ic(motifs, motif_names, bckgrnd=None, epsilon=None):
+    import pandas as pd
+    #set background frequencies of nucleotides
+    if not bckgrnd:
+        bckgrnd = [0.25, 0.25, 0.25, 0.25]
+    if not epsilon:
+        epsilon = 1e-11
+
+    #compute information content of each motif
+    info_content = []
+    position_ic = []
+    for i in range(motifs.shape[0]): 
+        position_wise_ic = np.subtract(np.sum(np.multiply(motifs[i,:,:],np.log2(motifs[i,:,:] + epsilon)), axis=1),np.sum(np.multiply(bckgrnd,np.log2(bckgrnd))))                                    
+        position_ic.append(position_wise_ic)
+        ic = np.sum(position_wise_ic, axis=0)
+        info_content.append(ic)
+        
+    info_content = np.stack(info_content)
+    position_ic = np.stack(position_ic)
+
+    #length of motif with high info content
+    n_info = np.sum(position_ic>0.2, axis=1)
+
+    #"length of motif", i.e. difference between first and last informative base
+    ic_idx = pd.DataFrame(np.argwhere(position_ic>0.2), columns=['row', 'idx']).groupby('row')['idx'].apply(list)
+    motif_length = []
+    for row in ic_idx:
+        motif_length.append(np.max(row)-np.min(row)+1) 
+
+    motif_length = np.stack(motif_length)
+    #create pandas data frame:
+    info_content_df = pd.DataFrame(data=[motif_names, info_content, n_info, pd.to_numeric(motif_length)]).T
+    info_content_df.columns=['Filter', 'IC', 'Num_Informative_Bases', 'Motif_Length']
+
+    return info_content_df
+
+
+# Read cell_type_names = class names
+def read_class_names(file_path, species):
+    with open(file_path,'r') as class_names_file:
+        if species == 'Mouse':
+            class_names = []
+            for line in class_names_file:
+                line = line.strip() # remove /n at the end
+                task_num, class_name = line.split()
+                class_names.append(class_name)
+            class_names = list(filter(None, class_names))  # This removes empty entries 
+        elif species == 'Human':
+            class_names = class_names_file.read().split('\t')
+            class_names[-1] = class_names[-1].strip() # remove the last newline
+            class_names = list(filter(None, class_names))  # This removes empty entries
+
+    return class_names
 
 
 if __name__ == "__main__":

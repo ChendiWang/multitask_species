@@ -24,6 +24,7 @@ from time import time
 
 import tensorflow as tf
 
+import utils
 import plot_utils
 import losses
 
@@ -31,7 +32,7 @@ import losses
 num_epochs = 10
 batch_size = 100
 learning_rate = 0.001
-weight = 0.01
+combined_loss_weight = 0.01
      
 #-------------------------------------------#
 # Step 1. Curate Data                
@@ -43,18 +44,17 @@ input_features = np.swapaxes(input_features,1,2) # Input dim is different from p
 peak_names = np.load('../data/' + species + '_Data/peak_names.npy')
 species_tag = np.ones((len(peak_names)))
 input_labels = np.load('../data/' + species + '_Data/cell_type_array.npy')
-with open('../data/' + species + '_Data/cell_type_names.txt','r') as class_names_file:        
-    class_names = []
-    for line in class_names_file:
-        line = line.strip() # remove /n at the end
-        task_num, class_name = line.split()
-        class_names.append(class_name)
-    class_names = list(filter(None, class_names))  # This removes empty entries
+input_labels = input_labels.astype(np.float32)
+class_names = utils.read_class_names('../data/' + species + '_Data/cell_type_names.txt', species)
 num_classes = len(class_names)
 
+if species == 'Mouse':
+    test_size_number = 15786
+if species == 'Human':
+    test_size_number = 25802
 from sklearn.model_selection import train_test_split
 train_features, test_features, train_labels, test_labels, train_names, test_names, train_species_tag, test_species_tag = train_test_split(
-    input_features, input_labels, peak_names, species_tag, test_size=15786, random_state=42) 
+    input_features, input_labels, peak_names, species_tag, test_size=test_size_number, random_state=42) 
 
 train_features, valid_features, train_labels, valid_labels, train_names, valid_names, train_species_tag, valid_species_tag = train_test_split(
     train_features, train_labels, train_names, train_species_tag, test_size=0.05, random_state=42)
@@ -62,7 +62,7 @@ train_features, valid_features, train_labels, valid_labels, train_names, valid_n
 #-------------------------------------------#
 # Step 2. Select the Architecture and Train
 #-------------------------------------------#
-def create_model(input_size, num_classes): 
+def create_model(input_size, num_classes, learning_rate, combined_loss_weight): 
     ## Build models based on Basset
     from tensorflow.keras.layers import Input, Conv1D, Dense, MaxPooling1D, Flatten, Dropout, Activation, BatchNormalization# BatchNormalization(different in keras standalone)
     
@@ -99,27 +99,20 @@ def create_model(input_size, num_classes):
     
     opt = tf.keras.optimizers.Adam(lr=learning_rate, beta_1=0.9, beta_2=0.999, epsilon=1e-8, decay=0, amsgrad=False) 
     
-    model.compile(loss=losses.pearson_loss, 
+    model.compile(loss=losses.combine_loss_by_sample(combined_loss_weight), 
                   optimizer=opt, 
                   metrics=['mse', losses.pearson_loss]) 
 
     return model
 
 
-# ## Model training 
-# We will further divide the training set into a training and validation set. 
-# We will train only on the reduced training set, but plot the loss curve on both the training and validation sets. 
-# __Early stopping__: Once the loss for the validation set stops improving or gets worse throughout the learning cycles, 
-# it is time to stop training because the model has already converged and may be just overfitting.
-
-
+# Model training 
 run_num = 'Basset_adam_lr0001_dropout_03_conv_relu_max_BN_batch_' + str(batch_size) + \
     '_loss_pearson_' + 'epoch' + str(num_epochs) + '_best_separatelayer'
 model_name = 'model' + species + '_' + run_num + '_nn'#+ 'PoissionNLLoss_'
 
 # Create output directory
-folder = '/media/chendi/DATA2/projects/XDNN/mhTransferLearning/immuneMH/'
-#folder = '../'
+folder = '../'
 output_directory = folder + 'results/models/keras_version/' + model_name + '/'
 directory = os.path.dirname(output_directory)
 if not os.path.exists(directory):
@@ -145,7 +138,7 @@ tensorboard = tf.keras.callbacks.TensorBoard(log_dir=output_directory+'logs/{}'.
                          update_freq='batch')
 
 input_size = train_features.shape[1]
-model = create_model(input_size, num_classes)
+model = create_model(input_size, num_classes, learning_rate, combined_loss_weight)
 history = model.fit(train_features, train_labels, batch_size=batch_size,
                     epochs=num_epochs, verbose=1, validation_data=(valid_features, valid_labels), 
                     callbacks=[cp_callback, tensorboard])
@@ -179,33 +172,27 @@ plt.close()
 #-------------------------------------------#
 # Using the model with the latest results
 predicted_labels = model.predict(np.stack(test_features))
-
 title = "basset_cor_hist_latest.svg"
 correlations = plot_utils.plot_cors(test_labels, predicted_labels, output_directory, title)
 
 # Using the Best weights 
-model = create_model(input_size, num_classes)
+model = create_model(input_size, num_classes, learning_rate, combined_loss_weight)
 model.load_weights(checkpoint_path_weights)
 model.save(output_directory + 'whole_model_best.h5')
 predicted_labels = model.predict(np.stack(test_features))
 
 title = "basset_cor_hist_best.svg"
 correlations = plot_utils.plot_cors(test_labels, predicted_labels, output_directory, title)
-
 plot_utils.plot_corr_variance(test_labels, correlations, output_directory)
-
 quantile_indx = plot_utils.plot_cors_piechart(correlations, test_labels, output_directory)
-
 plot_utils.plot_random_predictions(test_labels, predicted_labels, correlations, quantile_indx, test_names, output_directory, len(class_names), class_names)
 
-#save predictions
+# Save predictions, correlations and testset
 np.save(output_directory + 'predictions.npy', predicted_labels)
-
-#save correlations
 np.save(output_directory + 'correlations.npy', correlations)
-
 np.save(output_directory + 'test_data.npy', test_features)
 np.save(output_directory + 'test_labels.npy', test_labels)
 np.save(output_directory + 'test_OCR_names.npy', test_names)
 
+# Clear out session
 tf.keras.backend.clear_session()
