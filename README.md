@@ -30,5 +30,6 @@ Scripts are in Folder [Basset](https://github.com/ChendiWang/multitask_species/t
 3. Multitask Soft branch
 ![](images/Soft_parameter_sharing.png)
 4. Multitask Hard branch via task routing
+
 ![](images/architecture.png)
 
