@@ -2,7 +2,8 @@
 # -*- coding: utf-8 -*-
 """
 Created on Tue May  5 19:15:23 2020
-
+Generate .vcf files for the webportal to get evolutionary scores
+https://cadd.gs.washington.edu/score
 @author: chendi
 """
 from __future__ import absolute_import
