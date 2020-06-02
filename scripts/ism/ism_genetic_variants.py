@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """
 Created on Tue Mar 10 09:54:48 2020
-
+Extract the SAD feature from running model with reference allele vs. alternative allele
 @author: chendi
 """
 from __future__ import absolute_import
